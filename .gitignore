@@ -1,0 +1,23 @@
+
+# Python virtual environment
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Secrets
+.env
+.env.*
+
+# Input and generated videos
+input/*
+output/*
+
+# YOLO model weights
+yolov8n-pose.pt
+
+# Temporary files
+*.tmp
+*.log
