@@ -6,20 +6,11 @@ const API_BASE = "http://localhost:8000/api";
 export default function App() {
   const [jobId, setJobId] = useState(null);
   const [jobData, setJobData] = useState(null);
-  const [baseline, setBaseline] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const [evalStride, setEvalStride] = useState(15);
   const [activeVideoTab, setActiveVideoTab] = useState("compare"); // "compare" | "annotated"
   const fileInputRef = useRef(null);
-
-  // Fetch verified baseline on mount
-  useEffect(() => {
-    fetch(`${API_BASE}/baseline`)
-      .then((res) => res.json())
-      .then((data) => setBaseline(data))
-      .catch((err) => console.error("Could not fetch baseline:", err));
-  }, []);
 
   // Poll for job updates when processing
   useEffect(() => {
@@ -167,6 +158,7 @@ export default function App() {
   const analysis = jobData?.analysis;
   const compression = jobData?.compression;
   const evaluation = jobData?.evaluation;
+  const uniformEvaluation = evaluation?.uniform_evaluation;
 
   return (
     <div className="container">
@@ -602,9 +594,9 @@ export default function App() {
                   fontSize: "0.85rem",
                 }}
               >
+                <option value={1}>Full Evaluation ({metadata?.total_frames ?? "—"} frames)</option>
                 <option value={15}>Fast Evaluation (Every 15th frame)</option>
                 <option value={30}>Quick Evaluation (Every 30th frame)</option>
-                <option value={1}>Full Evaluation (Every frame)</option>
               </select>
               <button
                 className="btn btn-primary"
@@ -623,8 +615,11 @@ export default function App() {
                   <span>Average PSNR</span>
                   <h3>{evaluation.avg_psnr_db} dB</h3>
                   <small style={{ color: "#34d399", fontSize: "0.8rem" }}>
-                    {baseline && (
-                      <>+{(evaluation.avg_psnr_db - baseline.average_psnr_db).toFixed(2)} dB vs Uniform</>
+                    {uniformEvaluation && (
+                      <>
+                        {evaluation.avg_psnr_db >= uniformEvaluation.avg_psnr_db ? "+" : ""}
+                        {(evaluation.avg_psnr_db - uniformEvaluation.avg_psnr_db).toFixed(2)} dB vs Uniform
+                      </>
                     )}
                   </small>
                 </div>
@@ -632,14 +627,19 @@ export default function App() {
                   <span>Average SSIM</span>
                   <h3>{evaluation.avg_ssim}</h3>
                   <small style={{ color: "#34d399", fontSize: "0.8rem" }}>
-                    {baseline && (
-                      <>+{(evaluation.avg_ssim - baseline.average_ssim).toFixed(4)} vs Uniform</>
+                    {uniformEvaluation && (
+                      <>
+                        {evaluation.avg_ssim >= uniformEvaluation.avg_ssim ? "+" : ""}
+                        {(evaluation.avg_ssim - uniformEvaluation.avg_ssim).toFixed(4)} vs Uniform
+                      </>
                     )}
                   </small>
                 </div>
                 <div className="metric-card">
-                  <span>Frames Evaluated</span>
-                  <h3>{evaluation.frames_compared} frames</h3>
+                  <span>Frames Compared (Adaptive / Uniform)</span>
+                  <h3>
+                    {evaluation.frames_compared ?? "—"} / {uniformEvaluation?.frames_compared ?? "—"}
+                  </h3>
                 </div>
                 <div className="metric-card">
                   <span>Storage Saved</span>
@@ -673,33 +673,39 @@ export default function App() {
                     </tr>
                     <tr>
                       <td><strong>File Size</strong></td>
-                      <td>{evaluation.original_size_mb} MB</td>
-                      <td>{baseline?.uniform_compressed_size_mb} MB</td>
+                      <td>{evaluation.original_size_mb ?? metadata?.file_size_mb ?? "—"} MB</td>
+                      <td>{uniformEvaluation?.compressed_size_mb ?? "—"} MB</td>
                       <td><strong style={{ color: "#34d399" }}>{evaluation.compressed_size_mb} MB</strong></td>
                     </tr>
                     <tr>
                       <td><strong>Storage Reduction</strong></td>
                       <td>0.0%</td>
-                      <td>{baseline?.storage_reduction_pct}%</td>
+                      <td>{uniformEvaluation?.storage_reduction_pct ?? "—"}%</td>
                       <td><strong style={{ color: "#34d399" }}>{evaluation.storage_reduction_pct}%</strong></td>
                     </tr>
                     <tr>
                       <td><strong>Average PSNR</strong></td>
                       <td>&infin;</td>
-                      <td>{baseline?.average_psnr_db} dB</td>
+                      <td>{uniformEvaluation?.avg_psnr_db ?? "—"} dB</td>
                       <td><strong style={{ color: "#34d399" }}>{evaluation.avg_psnr_db} dB</strong></td>
                     </tr>
                     <tr>
                       <td><strong>Average SSIM</strong></td>
                       <td>1.0000</td>
-                      <td>{baseline?.average_ssim}</td>
+                      <td>{uniformEvaluation?.avg_ssim ?? "—"}</td>
                       <td><strong style={{ color: "#34d399" }}>{evaluation.avg_ssim}</strong></td>
                     </tr>
                     <tr>
-                      <td><strong>Video Resolution</strong></td>
-                      <td>{metadata?.resolution}</td>
-                      <td>{metadata?.resolution}</td>
-                      <td>{metadata?.resolution} (Preserved)</td>
+                      <td><strong>Resolution & FPS</strong></td>
+                      <td>{metadata?.resolution ?? "—"} @ {metadata?.fps ?? "—"}</td>
+                      <td>{metadata?.resolution ?? "—"} @ {metadata?.fps ?? "—"}</td>
+                      <td>{metadata?.resolution ?? "—"} @ {metadata?.fps ?? "—"}</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Total Frames</strong></td>
+                      <td>{metadata?.total_frames ?? "—"} frames</td>
+                      <td>{metadata?.total_frames ?? "—"} frames</td>
+                      <td>{metadata?.total_frames ?? "—"} frames</td>
                     </tr>
                   </tbody>
                 </table>
