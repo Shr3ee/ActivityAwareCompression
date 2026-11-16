@@ -16,6 +16,7 @@ import uuid
 import json
 import shutil
 import asyncio
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, Optional
 
@@ -290,34 +291,35 @@ def run_evaluation_task(job_id: str, stride: int):
         if not job.get("compressed_file") or not os.path.exists(job["compressed_file"]):
             raise RuntimeError("Compressed video file does not exist. Please compress first.")
 
-        # Check if evaluating the test video with full frame baseline already measured
-        is_sample_video = job["metadata"]["total_frames"] == 2670 and stride == 1
-        cached_result = None
+        original_path = job["original_file"]
+        job_dir = os.path.join(JOBS_DIR, job_id)
+        uniform_compressed_path = os.path.join(job_dir, "uniform_compressed.mp4")
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-i", original_path,
+                "-c:v", "libx264",
+                "-preset", "medium",
+                "-crf", "32",
+                "-c:a", "copy",
+                "-movflags", "+faststart",
+                "-y",
+                uniform_compressed_path
+            ],
+            check=True
+        )
 
-        if is_sample_video:
-            orig_size = job["metadata"]["file_size_mb"]
-            comp_size = round(os.path.getsize(job["compressed_file"]) / (1024 * 1024), 2)
-            red_pct = round(((orig_size - comp_size) / orig_size) * 100, 2)
-            cached_result = {
-                "original_path": job["original_file"],
-                "compressed_path": job["compressed_file"],
-                "original_size_mb": orig_size,
-                "compressed_size_mb": comp_size,
-                "storage_reduction_pct": red_pct,
-                "frames_compared": 2670,
-                "avg_psnr_db": 34.29,
-                "avg_ssim": 0.9297,
-                "evaluation_time_sec": 67.91
-            }
-
-        if cached_result:
-            result = cached_result
-        else:
-            result = evaluate_videos(
-                original_path=job["original_file"],
-                compressed_path=job["compressed_file"],
-                sample_stride=stride
-            )
+        result = evaluate_videos(
+            original_path=original_path,
+            compressed_path=job["compressed_file"],
+            sample_stride=stride
+        )
+        result["uniform_evaluation"] = evaluate_videos(
+            original_path=original_path,
+            compressed_path=uniform_compressed_path,
+            sample_stride=stride
+        )
 
         job["evaluation"] = result
         job["status"] = "ready"

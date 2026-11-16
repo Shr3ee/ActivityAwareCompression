@@ -9,7 +9,7 @@ export default function App() {
   const [baseline, setBaseline] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
-  const [evalStride, setEvalStride] = useState(1);
+  const [evalStride, setEvalStride] = useState(15);
   const fileInputRef = useRef(null);
 
   // Fetch verified baseline on mount
@@ -556,8 +556,10 @@ export default function App() {
                   </small>
                 </div>
                 <div className="metric-card">
-                  <span>Frames Evaluated</span>
-                  <h3>{evaluation.frames_compared}</h3>
+                  <span>Frames Compared (Adaptive / Uniform)</span>
+                  <h3>
+                    {evaluation.frames_compared} / {evaluation.uniform_evaluation.frames_compared}
+                  </h3>
                 </div>
                 <div className="metric-card">
                   <span>Storage Saved</span>
