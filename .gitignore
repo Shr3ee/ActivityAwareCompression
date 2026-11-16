@@ -21,3 +21,5 @@ yolov8n-pose.pt
 # Temporary files
 *.tmp
 *.log
+
+jobs/
