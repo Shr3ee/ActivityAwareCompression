@@ -4,10 +4,11 @@ FastAPI Server for Activity-Aware Video Compression Web Application.
 
 Provides REST endpoints for:
 - Video upload & validation
-- Scene-level motion analysis
-- Segment-based adaptive compression (STATIC CRF 36, ACTIVE CRF 28)
+- Human activity detection, pose estimation & critical event assessment
+- Adaptive compression based on activity importance (EMERGENCY / NORMAL HUMAN / IDLE)
 - Objective video quality evaluation (PSNR, SSIM, Storage Reduction)
-- Video preview streaming and download
+- Surveillance video preview streaming (Original, Adaptive Compressed, and Annotated Live Monitor)
+- File download
 """
 
 import os
@@ -30,14 +31,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 import cv2
 
-from src.motion_detector import detect_motion_segments
+from src.activity_detector import analyze_video_activities
 from src.adaptive_compressor import compress_adaptive, get_stream_info
 from src.evaluator import evaluate_videos
 
 app = FastAPI(
-    title="Activity-Aware Video Compression API",
-    description="Backend API for Scene-Level Motion-Aware Video Compression",
-    version="1.0.0"
+    title="Human Activity Detection for Surveillance Video Compression API",
+    description="Backend API for Human Activity-Aware Adaptive Surveillance Video Compression",
+    version="2.0.0"
 )
 
 # Enable CORS for local React development
@@ -52,13 +53,13 @@ app.add_middleware(
 JOBS_DIR = os.path.join(PROJECT_ROOT, "jobs")
 os.makedirs(JOBS_DIR, exist_ok=True)
 
-# Thread pool executor for running CPU-heavy OpenCV/FFmpeg tasks without blocking event loop
+# Thread pool executor for running CPU-heavy CV/FFmpeg tasks without blocking event loop
 executor = ThreadPoolExecutor(max_workers=2)
 
 # In-memory job state store
 jobs: Dict[str, Dict[str, Any]] = {}
 
-# Baseline experiment measurements (verified ground truth)
+# Verified baseline experiment measurements
 BASELINE_EXPERIMENT = {
     "original_size_mb": 60.45,
     "uniform_compressed_size_mb": 30.07,
@@ -84,7 +85,7 @@ def extract_metadata(video_path: str) -> Dict[str, Any]:
     
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     duration_sec = total_frames / fps if fps > 0 else 0.0
     cap.release()
@@ -104,7 +105,11 @@ def extract_metadata(video_path: str) -> Dict[str, Any]:
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "app": "Activity-Aware Surveillance Video Compression"}
+    return {
+        "status": "ok",
+        "app": "Human Activity Detection for Surveillance Video Compression",
+        "version": "2.0.0"
+    }
 
 
 @app.get("/api/baseline")
@@ -122,7 +127,7 @@ async def upload_video(file: UploadFile = File(...)):
     if not file.filename.lower().endswith((".mp4", ".mov", ".m4v", ".avi", ".mkv")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported file format. Please upload an MP4 video."
+            detail="Unsupported file format. Please upload an MP4 or compatible video."
         )
 
     job_id = str(uuid.uuid4())
@@ -131,7 +136,6 @@ async def upload_video(file: UploadFile = File(...)):
 
     dest_path = os.path.join(job_dir, "original.mp4")
 
-    # Stream file to disk in 1MB chunks to keep memory usage low
     try:
         with open(dest_path, "wb") as buffer:
             while chunk := await file.read(1024 * 1024):
@@ -140,7 +144,6 @@ async def upload_video(file: UploadFile = File(...)):
         shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Failed to save video: {str(e)}")
 
-    # Validate with OpenCV
     try:
         metadata = extract_metadata(dest_path)
     except Exception as e:
@@ -154,6 +157,7 @@ async def upload_video(file: UploadFile = File(...)):
         "message": "Video uploaded and verified successfully.",
         "original_file": dest_path,
         "compressed_file": None,
+        "annotated_file": None,
         "metadata": metadata,
         "analysis": None,
         "compression": None,
@@ -166,12 +170,14 @@ async def upload_video(file: UploadFile = File(...)):
 @app.post("/api/load-sample")
 def load_sample_video():
     """
-    Convenience endpoint for testing & demonstration:
-    Loads the verified test video (input/test_video.mp4) without re-uploading.
+    Loads verified surveillance demo video for instant demonstration.
     """
     sample_path = os.path.join(PROJECT_ROOT, "input", "test_video.mp4")
     if not os.path.exists(sample_path):
-        raise HTTPException(status_code=404, detail="input/test_video.mp4 not found.")
+        sample_path = os.path.join(PROJECT_ROOT, "input", "test_video_89s.mp4")
+
+    if not os.path.exists(sample_path):
+        raise HTTPException(status_code=404, detail="Sample video not found in input/ directory.")
 
     job_id = str(uuid.uuid4())
     job_dir = os.path.join(JOBS_DIR, job_id)
@@ -182,19 +188,14 @@ def load_sample_video():
 
     metadata = extract_metadata(dest_path)
 
-    # Check if pre-compressed output exists from Phase 3 to allow instant inspection
-    cached_adaptive = os.path.join(PROJECT_ROOT, "output", "adaptive_compressed.mp4")
-    compressed_dest = os.path.join(job_dir, "compressed.mp4")
-    if os.path.exists(cached_adaptive):
-        shutil.copyfile(cached_adaptive, compressed_dest)
-
     jobs[job_id] = {
         "job_id": job_id,
         "status": "ready",
         "stage": "uploaded",
-        "message": "Sample video loaded successfully.",
+        "message": "Surveillance test video loaded successfully.",
         "original_file": dest_path,
-        "compressed_file": compressed_dest if os.path.exists(compressed_dest) else None,
+        "compressed_file": None,
+        "annotated_file": None,
         "metadata": metadata,
         "analysis": None,
         "compression": None,
@@ -204,35 +205,64 @@ def load_sample_video():
     return {"job_id": job_id, "metadata": metadata, "status": "ready"}
 
 
-def run_analysis_task(job_id: str, threshold: float):
+def run_activity_analysis_task(job_id: str, sample_step: int = 5):
     job = jobs[job_id]
     job["status"] = "processing"
     job["stage"] = "analyzing"
-    job["message"] = "Running scene-level motion detection with OpenCV..."
+    job["message"] = "Detecting human pose keypoints, activity patterns, and critical events..."
 
     try:
-        result = detect_motion_segments(
+        job_dir = os.path.join(JOBS_DIR, job_id)
+        raw_preview = os.path.join(job_dir, "raw_annotated.mp4")
+        final_annotated = os.path.join(job_dir, "annotated_surveillance.mp4")
+
+        # Run full human activity detection, pose estimation, and critical object analysis
+        result = analyze_video_activities(
             video_path=job["original_file"],
-            sample_step=5,
-            motion_threshold_pct=threshold,
-            min_segment_duration_sec=3.0
+            sample_step=sample_step,
+            output_annotated_preview=raw_preview
         )
+
+        # Transcode annotated preview with libx264 for universal HTML5 browser playback
+        if os.path.exists(raw_preview):
+            subprocess.run([
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", raw_preview,
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "26",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                final_annotated
+            ], check=True)
+            job["annotated_file"] = final_annotated
+            try:
+                os.remove(raw_preview)
+            except Exception:
+                pass
+
         job["analysis"] = result
         job["status"] = "ready"
         job["stage"] = "analyzed"
-        job["message"] = f"Motion analysis complete. Identified {result['segment_count']} segments."
+        job["message"] = (
+            f"Activity assessment complete! Classified {result['segment_count']} segments: "
+            f"Emergency ({result['emergency_duration_sec']}s), "
+            f"Normal Human ({result['normal_duration_sec']}s), "
+            f"Idle ({result['idle_duration_sec']}s)."
+        )
     except Exception as e:
         job["status"] = "error"
-        job["message"] = f"Analysis failed: {str(e)}"
+        job["message"] = f"Activity detection failed: {str(e)}"
 
 
+@app.post("/api/job/{job_id}/detect-activities")
 @app.post("/api/job/{job_id}/analyze")
-async def start_analysis(job_id: str, threshold: float = Query(2.0, ge=0.1, le=50.0)):
+async def start_activity_detection(job_id: str, sample_step: int = Query(5, ge=1, le=30)):
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found.")
 
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(executor, run_analysis_task, job_id, threshold)
+    loop.run_in_executor(executor, run_activity_analysis_task, job_id, sample_step)
     return {"status": "started", "stage": "analyzing"}
 
 
@@ -240,24 +270,21 @@ def run_compression_task(job_id: str):
     job = jobs[job_id]
     job["status"] = "processing"
     job["stage"] = "compressing"
-    job["message"] = "Executing adaptive compression (STATIC: CRF 36, ACTIVE: CRF 28)..."
+    job["message"] = "Executing adaptive compression (EMERGENCY: 30 FPS / CRF 24, NORMAL: 10 FPS / CRF 32, IDLE: 5 FPS / CRF 36)..."
 
     try:
         job_dir = os.path.join(JOBS_DIR, job_id)
         output_path = os.path.join(job_dir, "compressed.mp4")
         temp_dir = os.path.join(job_dir, "temp_segments")
 
-        threshold = 2.0
-        if job.get("analysis") and "motion_threshold_pct" in job["analysis"]:
-            threshold = job["analysis"]["motion_threshold_pct"]
-
         result = compress_adaptive(
             input_video=job["original_file"],
             output_video=output_path,
-            static_crf=36,
-            active_crf=28,
+            analysis_result=job.get("analysis"),
+            emergency_crf=24,
+            normal_crf=32,
+            idle_crf=36,
             preset="medium",
-            threshold=threshold,
             temp_dir=temp_dir
         )
 
@@ -265,7 +292,7 @@ def run_compression_task(job_id: str):
         job["compression"] = result
         job["status"] = "ready"
         job["stage"] = "compressed"
-        job["message"] = f"Adaptive compression complete! File reduced by {result['storage_reduction_pct']}%."
+        job["message"] = f"Adaptive compression complete! Storage reduced by {result['storage_reduction_pct']}%."
     except Exception as e:
         job["status"] = "error"
         job["message"] = f"Compression failed: {str(e)}"
@@ -285,7 +312,7 @@ def run_evaluation_task(job_id: str, stride: int):
     job = jobs[job_id]
     job["status"] = "processing"
     job["stage"] = "evaluating"
-    job["message"] = f"Calculating PSNR & SSIM metrics (sampling stride: {stride})..."
+    job["message"] = f"Calculating objective PSNR & SSIM metrics (sampling stride: {stride})..."
 
     try:
         if not job.get("compressed_file") or not os.path.exists(job["compressed_file"]):
@@ -294,21 +321,23 @@ def run_evaluation_task(job_id: str, stride: int):
         original_path = job["original_file"]
         job_dir = os.path.join(JOBS_DIR, job_id)
         uniform_compressed_path = os.path.join(job_dir, "uniform_compressed.mp4")
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-i", original_path,
-                "-c:v", "libx264",
-                "-preset", "medium",
-                "-crf", "32",
-                "-c:a", "copy",
-                "-movflags", "+faststart",
-                "-y",
-                uniform_compressed_path
-            ],
-            check=True
-        )
+
+        # Encode uniform baseline (Fixed CRF 32) if not already generated
+        if not os.path.exists(uniform_compressed_path):
+            subprocess.run(
+                [
+                    "ffmpeg", "-hide_banner", "-loglevel", "error",
+                    "-i", original_path,
+                    "-c:v", "libx264",
+                    "-preset", "medium",
+                    "-crf", "32",
+                    "-c:a", "copy",
+                    "-movflags", "+faststart",
+                    "-y",
+                    uniform_compressed_path
+                ],
+                check=True
+            )
 
         result = evaluate_videos(
             original_path=original_path,
@@ -349,7 +378,7 @@ def get_job_status(job_id: str):
 
 @app.api_route("/api/video/{job_id}/{kind}", methods=["GET", "HEAD"])
 def stream_video(job_id: str, kind: str):
-    """Streams original or compressed video for HTML5 video playback."""
+    """Streams original, compressed, annotated surveillance preview, or baseline video."""
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found.")
 
@@ -358,6 +387,8 @@ def stream_video(job_id: str, kind: str):
         path = job["original_file"]
     elif kind == "compressed":
         path = job.get("compressed_file")
+    elif kind == "annotated":
+        path = job.get("annotated_file")
     elif kind == "baseline":
         path = os.path.join(PROJECT_ROOT, "output", "uniform_compressed.mp4")
     else:

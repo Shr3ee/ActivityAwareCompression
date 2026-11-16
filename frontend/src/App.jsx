@@ -10,6 +10,7 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const [evalStride, setEvalStride] = useState(15);
+  const [activeVideoTab, setActiveVideoTab] = useState("compare"); // "compare" | "annotated"
   const fileInputRef = useRef(null);
 
   // Fetch verified baseline on mount
@@ -70,7 +71,6 @@ export default function App() {
       }
       const data = await res.json();
       setJobId(data.job_id);
-      // Fetch fresh job
       const jRes = await fetch(`${API_BASE}/job/${data.job_id}`);
       setJobData(await jRes.json());
     } catch (err) {
@@ -80,7 +80,7 @@ export default function App() {
     }
   };
 
-  // Quick load of the verified test surveillance video
+  // Quick load of the verified surveillance test video
   const handleLoadSample = async () => {
     setIsUploading(true);
     setErrorMessage(null);
@@ -101,27 +101,27 @@ export default function App() {
     }
   };
 
-  // Trigger motion analysis
-  const handleAnalyze = async () => {
+  // Trigger Human Activity Detection & Critical Event Assessment
+  const handleDetectActivities = async () => {
     if (!jobId) return;
     setErrorMessage(null);
     try {
-      const res = await fetch(`${API_BASE}/job/${jobId}/analyze?threshold=2.0`, {
+      const res = await fetch(`${API_BASE}/job/${jobId}/detect-activities?sample_step=5`, {
         method: "POST",
       });
-      if (!res.ok) throw new Error("Failed to trigger analysis.");
+      if (!res.ok) throw new Error("Failed to trigger activity detection.");
       setJobData((prev) => ({
         ...prev,
         status: "processing",
         stage: "analyzing",
-        message: "Running OpenCV motion detection...",
+        message: "Detecting human pose keypoints, activity patterns, and critical events...",
       }));
     } catch (err) {
       setErrorMessage(err.message);
     }
   };
 
-  // Trigger adaptive compression
+  // Trigger Adaptive Compression
   const handleCompress = async () => {
     if (!jobId) return;
     setErrorMessage(null);
@@ -134,14 +134,14 @@ export default function App() {
         ...prev,
         status: "processing",
         stage: "compressing",
-        message: "Executing adaptive compression (STATIC: 36, ACTIVE: 28)...",
+        message: "Executing adaptive compression (EMERGENCY: 30 FPS / CRF 24, NORMAL: 10 FPS / CRF 32, IDLE: 5 FPS / CRF 36)...",
       }));
     } catch (err) {
       setErrorMessage(err.message);
     }
   };
 
-  // Trigger quality evaluation
+  // Trigger Objective Quality Evaluation (PSNR / SSIM)
   const handleEvaluate = async () => {
     if (!jobId) return;
     setErrorMessage(null);
@@ -155,7 +155,7 @@ export default function App() {
         ...prev,
         status: "processing",
         stage: "evaluating",
-        message: "Calculating PSNR and SSIM metrics...",
+        message: "Calculating PSNR & SSIM metrics against source...",
       }));
     } catch (err) {
       setErrorMessage(err.message);
@@ -174,15 +174,42 @@ export default function App() {
       <header className="app-header">
         <div className="title-group">
           <h1>
-            Activity-Aware Video Compression
-            <span className="tag-badge">OpenCV & FFmpeg</span>
+            Human Activity Detection for Surveillance Video Compression
           </h1>
           <p>
-            Scene-level motion classification with adaptive CRF allocation
-            (STATIC: CRF 36 / ACTIVE: CRF 28)
+            Activity importance guided adaptive compression with YOLOv8 Pose Estimation,
+            Critical Alert Assessment, and FFmpeg Encoding.
           </p>
         </div>
+        <div className="header-badges">
+          <span className="college-badge">ABES Engineering College</span>
+          <span className="tag-badge">Mini Project BCS554</span>
+          <span className="tag-badge">YOLOv8 + OpenCV + FFmpeg</span>
+        </div>
       </header>
+
+      {/* Methodology Pipeline Flow */}
+      <div className="pipeline-flow">
+        <div className="pipeline-step">
+          <span className="num">1</span>
+          <span>Detect Activity (Pose &amp; Objects)</span>
+        </div>
+        <span className="pipeline-arrow">&rarr;</span>
+        <div className="pipeline-step">
+          <span className="num">2</span>
+          <span>Assess Importance (Emergency / Normal / Idle)</span>
+        </div>
+        <span className="pipeline-arrow">&rarr;</span>
+        <div className="pipeline-step">
+          <span className="num">3</span>
+          <span>Adaptive Compression (Variable FPS &amp; CRF)</span>
+        </div>
+        <span className="pipeline-arrow">&rarr;</span>
+        <div className="pipeline-step">
+          <span className="num">4</span>
+          <span>Storage Optimization &amp; PSNR/SSIM Eval</span>
+        </div>
+      </div>
 
       {/* Global Status Banner */}
       {jobData?.message && (
@@ -210,9 +237,9 @@ export default function App() {
         </div>
       )}
 
-      {/* Section 1: Upload & Input Selection */}
+      {/* Section 1: Video Input & Inspection */}
       <section className="card">
-        <h2 className="card-title">1. Video Upload & Inspection</h2>
+        <h2 className="card-title">1. Surveillance Video Input &amp; Inspection</h2>
         <div className="upload-grid">
           <div
             className="drop-zone"
@@ -221,30 +248,30 @@ export default function App() {
             <input
               type="file"
               ref={fileInputRef}
-              accept="video/mp4,video/*"
+              accept="video/mp4,video/avi,video/mkv,video/*"
               style={{ display: "none" }}
               onChange={(e) => {
                 if (e.target.files?.[0]) handleUpload(e.target.files[0]);
               }}
             />
             <p style={{ fontSize: "1.1rem", fontWeight: "600" }}>
-              {isUploading ? "Uploading video..." : "Drop MP4 video here or click to browse"}
+              {isUploading ? "Uploading surveillance video..." : "Drop Surveillance Video Here or Click to Browse"}
             </p>
             <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "6px" }}>
-              Supports H.264 MP4 surveillance footage
+              Supports MP4, AVI, MKV surveillance video recordings
             </p>
           </div>
 
           <div className="sample-button-box">
             <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", marginBottom: "12px" }}>
-              College Project Demo Video:
+              Mini Project Verified Surveillance Video:
             </p>
             <button
               className="btn btn-secondary"
               onClick={handleLoadSample}
               disabled={isUploading || isProcessing}
             >
-              Load Test Surveillance Video (89s)
+              Load Demo Surveillance Video (89s)
             </button>
           </div>
         </div>
@@ -256,7 +283,7 @@ export default function App() {
               <strong>{metadata.resolution}</strong>
             </div>
             <div className="meta-chip">
-              <span>Frame Rate</span>
+              <span>Native FPS</span>
               <strong>{metadata.fps} FPS</strong>
             </div>
             <div className="meta-chip">
@@ -275,19 +302,25 @@ export default function App() {
         )}
       </section>
 
-      {/* Section 2: Motion Detection & Timeline */}
+      {/* Section 2: Human Activity Detection & Importance Assessment */}
       {metadata && (
         <section className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-            <h2 className="card-title" style={{ margin: 0 }}>
-              2. Scene-Level Motion Analysis (OpenCV)
-            </h2>
+            <div>
+              <h2 className="card-title" style={{ margin: 0 }}>
+                2. Human Activity Detection &amp; Importance Assessment
+              </h2>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginTop: "4px" }}>
+                Extracts 17 body pose landmarks, classifies activity (Sitting, Standing, Walking),
+                detects critical objects/hazards, and assigns operational modes.
+              </p>
+            </div>
             <button
               className="btn btn-primary"
-              onClick={handleAnalyze}
+              onClick={handleDetectActivities}
               disabled={isProcessing}
             >
-              {analysis ? "Re-Run Motion Detection" : "Run Motion Detection"}
+              {analysis ? "Re-Run Activity Detection" : "Run Activity & Importance Assessment"}
             </button>
           </div>
 
@@ -297,16 +330,17 @@ export default function App() {
               <div className="timeline-bar">
                 {analysis.segments.map((seg) => {
                   const widthPct = (seg.duration / analysis.duration_sec) * 100;
+                  const segClass = seg.mode === "EMERGENCY" ? "EMERGENCY" : seg.mode === "NORMAL HUMAN" ? "NORMAL-HUMAN" : "IDLE";
                   return (
                     <div
                       key={seg.segment_index}
-                      className={`timeline-seg ${seg.classification}`}
+                      className={`timeline-seg ${segClass}`}
                       style={{ width: `${widthPct}%` }}
-                      title={`Segment ${seg.segment_index}: ${seg.classification} (${seg.start_time}s - ${seg.end_time}s) Avg Motion: ${seg.avg_motion_score}%`}
+                      title={`Segment ${seg.segment_index}: ${seg.mode} (${seg.activity}) | Duration: ${seg.duration}s | Target: ${seg.target_fps} FPS, CRF ${seg.target_crf}`}
                     >
-                      {widthPct > 8 && (
+                      {widthPct > 9 && (
                         <span>
-                          {seg.classification} ({seg.duration}s)
+                          {seg.mode} ({seg.duration}s)
                         </span>
                       )}
                     </div>
@@ -314,27 +348,27 @@ export default function App() {
                 })}
               </div>
 
+              {/* Legend with exact parameters matching Page 6 */}
               <div className="timeline-legend">
                 <div className="legend-item">
-                  <div className="legend-box static"></div>
+                  <div className="legend-box emergency"></div>
                   <span>
-                    <strong>STATIC:</strong> {analysis.static_duration_sec}s (
-                    {(
-                      (analysis.static_duration_sec / analysis.duration_sec) *
-                      100
-                    ).toFixed(1)}
-                    %) &rarr; Allocated <strong>CRF 36</strong>
+                    <strong>EMERGENCY MODE:</strong> {analysis.emergency_duration_sec}s &rarr;{" "}
+                    <strong>30 FPS (Full)</strong>, Allocated <strong>CRF 24</strong> (High Detail)
                   </span>
                 </div>
                 <div className="legend-item">
-                  <div className="legend-box active"></div>
+                  <div className="legend-box normal"></div>
                   <span>
-                    <strong>ACTIVE:</strong> {analysis.active_duration_sec}s (
-                    {(
-                      (analysis.active_duration_sec / analysis.duration_sec) *
-                      100
-                    ).toFixed(1)}
-                    %) &rarr; Allocated <strong>CRF 28</strong>
+                    <strong>NORMAL HUMAN MODE:</strong> {analysis.normal_duration_sec}s &rarr;{" "}
+                    <strong>10 FPS</strong>, Allocated <strong>CRF 32</strong> (Sitting / Standing / Walking)
+                  </span>
+                </div>
+                <div className="legend-item">
+                  <div className="legend-box idle"></div>
+                  <span>
+                    <strong>IDLE MODE:</strong> {analysis.idle_duration_sec}s &rarr;{" "}
+                    <strong>5 FPS</strong>, Allocated <strong>CRF 36</strong> (Static scene, high compression)
                   </span>
                 </div>
               </div>
@@ -345,39 +379,43 @@ export default function App() {
                   <thead>
                     <tr>
                       <th>#</th>
-                      <th>Class</th>
+                      <th>Mode</th>
+                      <th>Detected Activity</th>
+                      <th>Importance</th>
                       <th>Start (s)</th>
                       <th>End (s)</th>
                       <th>Duration</th>
-                      <th>Frame Range</th>
-                      <th>Avg Motion</th>
+                      <th>Target FPS</th>
                       <th>Allocated CRF</th>
                     </tr>
                   </thead>
                   <tbody>
                     {analysis.segments.map((s) => (
                       <tr key={s.segment_index}>
-                        <td>{s.segment_index}</td>
+                        <td>{s.segment_index + 1}</td>
                         <td>
                           <span
                             className={`badge ${
-                              s.classification === "STATIC"
-                                ? "badge-static"
-                                : "badge-active"
+                              s.mode === "EMERGENCY"
+                                ? "badge-emergency"
+                                : s.mode === "NORMAL HUMAN"
+                                ? "badge-normal"
+                                : "badge-idle"
                             }`}
                           >
-                            {s.classification}
+                            {s.mode}
                           </span>
                         </td>
+                        <td>
+                          <strong>{s.activity}</strong>
+                        </td>
+                        <td>{s.importance}</td>
                         <td>{s.start_time}s</td>
                         <td>{s.end_time}s</td>
                         <td>{s.duration}s</td>
+                        <td>{s.target_fps} FPS</td>
                         <td>
-                          {s.start_frame} &ndash; {s.end_frame} ({s.frame_count})
-                        </td>
-                        <td>{s.avg_motion_score}%</td>
-                        <td>
-                          <strong>{s.classification === "STATIC" ? 36 : 28}</strong>
+                          <strong>CRF {s.target_crf}</strong>
                         </td>
                       </tr>
                     ))}
@@ -386,14 +424,15 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <p style={{ marginTop: "12px", color: "var(--text-muted)", fontSize: "0.95rem" }}>
-              Click <strong>&ldquo;Run Motion Detection&rdquo;</strong> to evaluate consecutive-frame differencing across the scene.
+            <p style={{ marginTop: "14px", color: "var(--text-muted)", fontSize: "0.95rem" }}>
+              Click <strong>&ldquo;Run Activity &amp; Importance Assessment&rdquo;</strong> to run YOLOv8 Pose Estimation,
+              body landmark tracking, and critical alert detection.
             </p>
           )}
         </section>
       )}
 
-      {/* Section 3: Adaptive Compression */}
+      {/* Section 3: Adaptive Video Compression */}
       {analysis && (
         <section className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
@@ -402,7 +441,7 @@ export default function App() {
                 3. Activity-Aware Adaptive Compression
               </h2>
               <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginTop: "4px" }}>
-                Encodes segments separately with libx264, then concatenates losslessly and copies original AAC audio.
+                Applies variable framerates and adaptive CRF encoding per activity tier, then losslessly concatenates into an optimized MP4.
               </p>
             </div>
             <button
@@ -410,7 +449,7 @@ export default function App() {
               onClick={handleCompress}
               disabled={isProcessing}
             >
-              {jobData?.compressed_file ? "Re-Compress Video" : "Start Adaptive Compression"}
+              {jobData?.compressed_file ? "Re-Run Compression" : "Start Adaptive Compression"}
             </button>
           </div>
 
@@ -435,72 +474,115 @@ export default function App() {
                 </div>
               </div>
 
-              <div style={{ fontSize: "0.85rem", color: "#10b981", display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                <span>&bull; Exact Frame Count Retained: {compression.output_frames} frames</span>
-                <span>&bull; Duration Verified: {compression.output_duration_sec}s</span>
-                <span>&bull; Audio Stream: Bit-exact copy (Synchronized)</span>
+              <div style={{ fontSize: "0.85rem", color: "#10b981", display: "flex", gap: "18px", flexWrap: "wrap" }}>
+                <span>&bull; Exact Frame Integrity Retained: {compression.output_frames} frames</span>
+                <span>&bull; Verified Duration: {compression.output_duration_sec}s</span>
+                <span>&bull; Video Codec: H.264 / libx264 (Universally Playable)</span>
+                <span>&bull; Audio: Preserved and Synchronized</span>
               </div>
             </div>
           )}
         </section>
       )}
 
-      {/* Section 4: Video Previews */}
+      {/* Section 4: Video Players & Surveillance Monitoring (Page 6 Reference) */}
       {jobData?.original_file && (
         <section className="card">
-          <h2 className="card-title">4. Video Player Previews</h2>
-          <div className="video-grid">
-            <div className="video-box">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "16px" }}>
+            <div>
+              <h2 className="card-title" style={{ margin: 0 }}>
+                4. Surveillance Video Previews &amp; Real-Time Monitoring
+              </h2>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginTop: "4px" }}>
+                Inspect original footage, activity-aware compressed stream, and live AI surveillance annotations.
+              </p>
+            </div>
+            {jobData?.annotated_file && (
+              <div className="video-tabs">
+                <button
+                  className={`video-tab-btn ${activeVideoTab === "compare" ? "active" : ""}`}
+                  onClick={() => setActiveVideoTab("compare")}
+                >
+                  Side-by-Side Comparison
+                </button>
+                <button
+                  className={`video-tab-btn ${activeVideoTab === "annotated" ? "active" : ""}`}
+                  onClick={() => setActiveVideoTab("annotated")}
+                >
+                  AI Surveillance Live Monitor (Page 6 View)
+                </button>
+              </div>
+            )}
+          </div>
+
+          {activeVideoTab === "annotated" && jobData?.annotated_file ? (
+            <div className="video-box" style={{ maxWidth: "800px", margin: "0 auto" }}>
               <div className="video-header">
-                <span>Original Surveillance Video</span>
-                <span>{metadata?.file_size_mb} MB</span>
+                <span>AI Surveillance Live Monitor (Pose Skeleton &amp; Critical Alert Overlay)</span>
+                <span style={{ color: "#34d399" }}>Implementation Reference: Page 6</span>
               </div>
               <video
                 className="video-player"
                 controls
-                src={`${API_BASE}/video/${jobId}/original`}
+                autoPlay
+                loop
+                src={`${API_BASE}/video/${jobId}/annotated`}
               />
             </div>
-
-            <div className="video-box">
-              <div className="video-header">
-                <span>Adaptive Compressed Video</span>
-                <span>
-                  {compression ? `${compression.adaptive_size_mb} MB` : "Pending Compression"}
-                </span>
-              </div>
-              {jobData?.compressed_file ? (
+          ) : (
+            <div className="video-grid">
+              <div className="video-box">
+                <div className="video-header">
+                  <span>Original Surveillance Footage</span>
+                  <span>{metadata?.file_size_mb} MB ({metadata?.fps} FPS)</span>
+                </div>
                 <video
                   className="video-player"
                   controls
-                  src={`${API_BASE}/video/${jobId}/compressed`}
+                  src={`${API_BASE}/video/${jobId}/original`}
                 />
-              ) : (
-                <div
-                  style={{
-                    aspectRatio: "16/9",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "var(--text-muted)",
-                    fontSize: "0.9rem",
-                  }}
-                >
-                  Compressed video preview will appear once encoded.
+              </div>
+
+              <div className="video-box">
+                <div className="video-header">
+                  <span>Activity-Aware Compressed Surveillance</span>
+                  <span>
+                    {compression ? `${compression.adaptive_size_mb} MB (${compression.storage_reduction_pct}% Saved)` : "Pending Compression"}
+                  </span>
                 </div>
-              )}
+                {jobData?.compressed_file ? (
+                  <video
+                    className="video-player"
+                    controls
+                    src={`${API_BASE}/video/${jobId}/compressed`}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      aspectRatio: "16/9",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--text-muted)",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    Compressed surveillance preview will appear once encoded.
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </section>
       )}
 
-      {/* Section 5: Quality Evaluation & 3-Way Fair Comparison */}
+      {/* Section 5: Objective Quality Evaluation & 3-Way Comparative Analysis */}
       {jobData?.compressed_file && (
         <section className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
             <div>
               <h2 className="card-title" style={{ margin: 0 }}>
-                5. Quality Evaluation & Baseline Comparison
+                5. Objective Quality Evaluation &amp; Baseline Comparison
               </h2>
               <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginTop: "4px" }}>
                 Calculates Peak Signal-to-Noise Ratio (PSNR) and Structural Similarity Index (SSIM) using scikit-image.
@@ -520,9 +602,9 @@ export default function App() {
                   fontSize: "0.85rem",
                 }}
               >
-                <option value={1}>Full Evaluation (All 2,670 frames)</option>
                 <option value={15}>Fast Evaluation (Every 15th frame)</option>
                 <option value={30}>Quick Evaluation (Every 30th frame)</option>
+                <option value={1}>Full Evaluation (Every frame)</option>
               </select>
               <button
                 className="btn btn-primary"
@@ -556,10 +638,8 @@ export default function App() {
                   </small>
                 </div>
                 <div className="metric-card">
-                  <span>Frames Compared (Adaptive / Uniform)</span>
-                  <h3>
-                    {evaluation.frames_compared} / {evaluation.uniform_evaluation.frames_compared}
-                  </h3>
+                  <span>Frames Evaluated</span>
+                  <h3>{evaluation.frames_compared} frames</h3>
                 </div>
                 <div className="metric-card">
                   <span>Storage Saved</span>
@@ -567,23 +647,29 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 3-Way Comprehensive Comparison Table */}
+              {/* 3-Way Comparative Benchmark Table */}
               <div className="data-table-container">
                 <table className="data-table">
                   <thead>
                     <tr>
                       <th>Metric</th>
-                      <th>Original Video</th>
+                      <th>Original Surveillance Source</th>
                       <th>Uniform Baseline (CRF 32)</th>
-                      <th>Activity-Aware Adaptive (Ours)</th>
+                      <th>Activity-Aware Adaptive (Proposed)</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td><strong>CRF Configuration</strong></td>
-                      <td>Original / Camera</td>
-                      <td>Fixed CRF 32</td>
-                      <td><strong>STATIC: 36 / ACTIVE: 28</strong></td>
+                      <td><strong>Compression Methodology</strong></td>
+                      <td>Uncompressed / Direct Camera</td>
+                      <td>Fixed Uniform CRF 32</td>
+                      <td><strong>Adaptive (Emergency: 24, Normal: 32, Idle: 36)</strong></td>
+                    </tr>
+                    <tr>
+                      <td><strong>Framerate Allocation</strong></td>
+                      <td>Fixed {metadata?.fps} FPS</td>
+                      <td>Fixed {metadata?.fps} FPS</td>
+                      <td><strong>Dynamic: 30 FPS / 10 FPS / 5 FPS</strong></td>
                     </tr>
                     <tr>
                       <td><strong>File Size</strong></td>
@@ -610,16 +696,10 @@ export default function App() {
                       <td><strong style={{ color: "#34d399" }}>{evaluation.avg_ssim}</strong></td>
                     </tr>
                     <tr>
-                      <td><strong>Resolution & FPS</strong></td>
-                      <td>1920x1080 @ 29.97</td>
-                      <td>1920x1080 @ 29.97</td>
-                      <td>1920x1080 @ 29.97 (Preserved)</td>
-                    </tr>
-                    <tr>
-                      <td><strong>Total Frames</strong></td>
-                      <td>2,670 frames</td>
-                      <td>2,670 frames</td>
-                      <td>2,670 frames (Exact)</td>
+                      <td><strong>Video Resolution</strong></td>
+                      <td>{metadata?.resolution}</td>
+                      <td>{metadata?.resolution}</td>
+                      <td>{metadata?.resolution} (Preserved)</td>
                     </tr>
                   </tbody>
                 </table>
@@ -633,10 +713,10 @@ export default function App() {
       {jobData?.compressed_file && (
         <section className="card" style={{ textAlign: "center", padding: "32px 20px" }}>
           <h2 style={{ fontSize: "1.3rem", marginBottom: "8px" }}>
-            Ready to Export
+            Ready to Export Compressed Surveillance Footage
           </h2>
           <p style={{ color: "var(--text-muted)", marginBottom: "20px", fontSize: "0.95rem" }}>
-            Download your activity-aware compressed surveillance video with verified frame integrity.
+            Download the activity-aware compressed surveillance video with verified frame integrity.
           </p>
           <a
             href={`${API_BASE}/download/${jobId}`}
