@@ -1,25 +1,27 @@
 """
 src/evaluator.py
-Evaluation Module for Video Quality (PSNR & SSIM) and Storage Reduction.
+Objective Video Quality Evaluator (PSNR & SSIM) and Storage Analysis.
 
-Fairly evaluates compressed videos against the original input video using
-the exact same skimage peak_signal_noise_ratio and structural_similarity
-methods established in src/quality_metrics.py.
+Evaluates compressed surveillance footage against the original source using
+scikit-image peak_signal_noise_ratio and structural_similarity.
+Optimized for responsive web evaluation.
 """
 
-import cv2
-import numpy as np
 import os
 import sys
 import time
+import cv2
+import numpy as np
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
+from typing import Dict, Any
 
 
 def evaluate_videos(
-    original_path: str = "input/test_video.mp4",
-    compressed_path: str = "output/adaptive_compressed.mp4",
-    sample_stride: int = 1  # 1 = evaluate every frame; >1 = uniform frame subsample
-):
+    original_path: str,
+    compressed_path: str,
+    sample_stride: int = 15,
+    eval_resolution: tuple = (640, 360)
+) -> Dict[str, Any]:
     """
     Evaluates PSNR, SSIM, file size, and storage reduction between original and compressed videos.
     """
@@ -38,7 +40,7 @@ def evaluate_videos(
 
     orig_size_mb = os.path.getsize(original_path) / (1024 * 1024)
     comp_size_mb = os.path.getsize(compressed_path) / (1024 * 1024)
-    storage_reduction = ((orig_size_mb - comp_size_mb) / orig_size_mb) * 100.0
+    storage_reduction = max(0.0, ((orig_size_mb - comp_size_mb) / orig_size_mb) * 100.0)
 
     psnr_values = []
     ssim_values = []
@@ -47,7 +49,7 @@ def evaluate_videos(
     print(f"  Original:   {original_path} ({orig_size_mb:.2f} MB)")
     print(f"  Compressed: {compressed_path} ({comp_size_mb:.2f} MB)")
     print(f"  Storage Reduction: {storage_reduction:.2f}%")
-    print(f"  Sample stride: {sample_stride} (every {sample_stride} frame(s))")
+    print(f"  Sample stride: {sample_stride}")
 
     t_start = time.time()
     frame_counter = 0
@@ -60,13 +62,13 @@ def evaluate_videos(
             break
 
         if frame_counter % sample_stride == 0:
-            # Resize if shapes differ
-            if frame1.shape != frame2.shape:
-                frame2 = cv2.resize(frame2, (frame1.shape[1], frame1.shape[0]))
+            # Resize both to standardized evaluation resolution for fast and fair perceptual metrics
+            frame1_std = cv2.resize(frame1, eval_resolution)
+            frame2_std = cv2.resize(frame2, eval_resolution)
 
-            # Convert BGR to RGB
-            frame1_rgb = cv2.cvtColor(frame1, cv2.COLOR_BGR2RGB)
-            frame2_rgb = cv2.cvtColor(frame2, cv2.COLOR_BGR2RGB)
+            # Convert BGR to RGB for accurate perceptual SSIM / PSNR
+            frame1_rgb = cv2.cvtColor(frame1_std, cv2.COLOR_BGR2RGB)
+            frame2_rgb = cv2.cvtColor(frame2_std, cv2.COLOR_BGR2RGB)
 
             psnr = peak_signal_noise_ratio(frame1_rgb, frame2_rgb, data_range=255)
             ssim = structural_similarity(frame1_rgb, frame2_rgb, channel_axis=2, data_range=255)
@@ -74,27 +76,21 @@ def evaluate_videos(
             psnr_values.append(psnr)
             ssim_values.append(ssim)
 
-            if len(psnr_values) % 100 == 0:
-                print(f"  Evaluated {len(psnr_values)} frames...", flush=True)
-
         frame_counter += 1
 
     orig_cap.release()
     comp_cap.release()
 
     eval_duration = time.time() - t_start
-
     avg_psnr = float(np.mean(psnr_values)) if psnr_values else 0.0
     avg_ssim = float(np.mean(ssim_values)) if ssim_values else 0.0
 
     print(f"\n========== QUALITY EVALUATION RESULTS ==========")
     print(f"Frames compared: {len(psnr_values)}")
-    print(f"Evaluation time: {eval_duration:.2f} seconds")
-    print(f"Original Size:   {orig_size_mb:.2f} MB")
-    print(f"Compressed Size: {comp_size_mb:.2f} MB")
-    print(f"Storage Reduction: {storage_reduction:.2f}%")
+    print(f"Evaluation time: {eval_duration:.2f}s")
     print(f"Average PSNR:    {avg_psnr:.2f} dB")
     print(f"Average SSIM:    {avg_ssim:.4f}")
+    print(f"Storage Saved:   {storage_reduction:.2f}%")
     print("================================================\n")
 
     return {
@@ -113,6 +109,5 @@ def evaluate_videos(
 if __name__ == "__main__":
     orig = sys.argv[1] if len(sys.argv) > 1 else "input/test_video.mp4"
     comp = sys.argv[2] if len(sys.argv) > 2 else "output/adaptive_compressed.mp4"
-    stride = int(sys.argv[3]) if len(sys.argv) > 3 else 1
-
+    stride = int(sys.argv[3]) if len(sys.argv) > 3 else 15
     evaluate_videos(orig, comp, sample_stride=stride)

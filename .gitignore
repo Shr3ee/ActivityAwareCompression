@@ -17,6 +17,8 @@ output/*
 
 # YOLO model weights
 yolov8n-pose.pt
+yolov8n.pt
+*.pt
 
 # Temporary files
 *.tmp
